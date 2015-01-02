@@ -2,9 +2,32 @@
 
 import os
 import subprocess
+import codecs
+import time
 import sqlite3
 
+import bcrypt
 import cherrypy
+
+def toHex(s):
+    '''Returns hex string.'''
+    return codecs.encode(s, 'hex').decode()
+
+def fromHex(s):
+    '''Returns bytes.'''
+    return codecs.decode(s, 'hex')
+
+def genHex(length=32):
+    '''Generate random hex string.'''
+    return toHex(os.urandom(length))
+
+def loggedIn():
+    '''Checks if current auth cookie is valid.'''
+    cookie = cherrypy.request.cookie
+    if 'auth' in cookie.keys():
+        if auth_keys.valid(cookie['auth'].value):
+            return True
+    return False
 
 def load_templates(template_dir):
     templates = [template.split('.html')[0] for template in os.listdir(path=template_dir)]
@@ -19,6 +42,47 @@ def pdftotext(data):
 
 html = load_templates('templates')
 
+class AuthKeys(object):
+    def __init__(self):
+        self.keys = dict()
+        self.keyExpTime = 60 * 60
+
+    def add(self, appuser):
+        key = genHex()
+        date = int(time.time())
+        self.keys[key] = {'appuser': appuser, 'date': date}
+        return key
+
+    def delete(self, key):
+        if key in self.keys:
+            del self.keys[key]
+            return True
+        else:
+            return False
+
+    def valid(self, key):
+        now = self.expire()
+        if key in self.keys:
+            self.keys[key]['date'] = now
+            return True
+        else:
+            return False
+
+    def user(self, key):
+        if key in self.keys:
+            return self.keys[key]['appuser']
+
+    def expire(self):
+        now = int(time.time())
+        exp_date = now - self.keyExpTime
+        keys = list(self.keys.keys())
+        for key in keys:
+            if self.keys[key]['date'] < exp_date:
+                del self.keys[key]
+        return now
+
+auth_keys = AuthKeys()
+
 class MealplanDatabase(object):
     def __init__(self):
         self.dbfile = 'mps.db'
@@ -27,8 +91,22 @@ class MealplanDatabase(object):
     def new_db(self):
         conn = sqlite3.connect(self.dbfile)
         conn.execute('create virtual table mealplans using fts4(plan_type, date, filename, content, notindexed=date)')
+        conn.execute('create table appusers (appuser text primary key not null, password text)')
         conn.commit()
         conn.close()
+
+    def new_appuser(self, appuser, password):
+        password = bcrypt.hashpw(password, bcrypt.gensalt())
+        conn = sqlite3.connect(self.dbfile)
+        conn.execute('insert into appusers values(?, ?)', (appuser, password))
+        conn.commit()
+        conn.close()
+
+    def password_valid(self, appuser, password):
+        conn = sqlite3.connect(self.dbfile)
+        stored_password = conn.execute('select password from appusers where appuser=?', (appuser,)).fetchone()[0]
+        conn.close()
+        return bcrypt.checkpw(password, stored_password)
 
     def add(self, plan_type, date, filename, content):
         conn = sqlite3.connect(self.dbfile)
@@ -61,15 +139,51 @@ class Root(object):
     @cherrypy.expose
     def index(self):
         if not os.path.isfile(mealplan_db.dbfile):
-            out = 'Database does not exist. Creating new.'
-            mealplan_db.new_db()
+            out = html['setup']
         else:
             out = html['search']
         return html['template'].format(content=out)
 
     @cherrypy.expose
-    def search(self, query):
+    def setup(self, user, password):
         out = ''
+        if not os.path.isfile(mealplan_db.dbfile):
+            mealplan_db.new_db()
+            mealplan_db.new_appuser(user, password)
+            out += html['message'].format(content='Setup complete.')
+            out += html['search']
+        else:
+            out += html['message'].format(content='Setup is already complete.')
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def login(self, appuser=None, password=None):
+        out = ''
+        if appuser and password:
+            if mealplan_db.password_valid(appuser, password):
+                cookie = cherrypy.response.cookie
+                cookie['auth'] = auth_keys.add(appuser)
+                out += html['message'].format(content='You are now logged in.')
+                out += html['search']
+            else:
+                out += html['message'].format(content='Incorrect username or password.')
+        else:
+            out += html['login']
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def logout(self):
+        out = ''
+        if loggedIn():
+            auth_keys.delete(cherrypy.request.cookie['auth'].value)
+            out += html['message'].format(content='You have been logged out.')
+        else:
+            out += html['message'].format(content='You are not logged in.')
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def search(self, query):
+        out = html['search']
         for record in mealplan_db.search(query):
             out += html['record'].format(**record)
         return html['template'].format(content=out)
@@ -77,13 +191,17 @@ class Root(object):
     @cherrypy.expose
     def add(self, pdf_file=None, plan_type=None, date=None):
         out = ''
-        if pdf_file and plan_type and date:
-            filename = pdf_file.filename
-            content = pdftotext(pdf_file.file.read())
-            content = ' '.join(content.split())
-            mealplan_db.add(plan_type, date, filename, content)
+        if loggedIn():
+            if pdf_file and plan_type and date:
+                filename = pdf_file.filename
+                content = pdftotext(pdf_file.file.read())
+                content = ' '.join(content.split())
+                mealplan_db.add(plan_type, date, filename, content)
+                out += html['message'].format(content='Record added.')
+            else:
+                out += html['add']
         else:
-            out += html['add']
+            out += html['message'].format(content='You must log in to add records.')
         return html['template'].format(content=out)
 
 cherrypy.config.update('server.conf')

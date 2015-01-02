@@ -1,1 +1,2 @@
 cherrypy
+py-bcrypt
