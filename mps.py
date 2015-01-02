@@ -209,7 +209,7 @@ class Root(object):
     @cherrypy.expose
     def all(self):
         out = html['search']
-        for record in mealplan_db.search(query):
+        for record in mealplan_db.all():
             out += html['record'].format(**record)
         return html['template'].format(content=out)
 
