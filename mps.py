@@ -18,6 +18,7 @@ html = load_templates('templates')
 class MealplanDatabase(object):
     def __init__(self):
         self.dbfile = 'mps.db'
+        self.fields = ('plan_type', 'date', 'content', 'rowid')
 
     def new_db(self):
         conn = sqlite3.connect(self.dbfile)
@@ -47,7 +48,8 @@ class MealplanDatabase(object):
         conn = sqlite3.connect(self.dbfile)
         records = conn.execute('select *,rowid from mealplans where mealplans match ?', (query,)).fetchall()
         conn.close()
-        return records
+        out = [dict(zip(self.fields, record)) for record in records]
+        return out
 
 mealplan_db = MealplanDatabase()
 
@@ -65,7 +67,7 @@ class Root(object):
     def search(self, query):
         out = ''
         for record in mealplan_db.search(query):
-            out += record
+            out += html['record'].format(**record)
         return html['template'].format(content=out)
 
     @cherrypy.expose
