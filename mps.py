@@ -156,6 +156,19 @@ class Root(object):
             out += html['message'].format(content='Setup is already complete.')
         return html['template'].format(content=out)
 
+    @cherrypy.expose('new-user')
+    def new_user(self, appuser=None, password=None):
+        out = ''
+        if loggedIn():
+            if appuser and password:
+                mealplan_db.new_appuser(appuser, password)
+                out += html['message'].format(content='User has been added.')
+            else:
+                out += html['new_user']
+        else:
+            out += html['message'].format(content='You must log in to add a user.')
+        return html['template'].format(content=out)
+
     @cherrypy.expose
     def login(self, appuser=None, password=None):
         out = ''
