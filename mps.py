@@ -49,10 +49,33 @@ class MealplanDatabase(object):
         conn.close()
         return records
 
+mealplan_db = MealplanDatabase()
+
 class Root(object):
     @cherrypy.expose
     def index(self):
-        out = html['search']
+        if not os.path.isfile(mealplan_db.dbfile):
+            out = 'Database does not exist. Creating new.'
+            mealplan_db.new_db()
+        else:
+            out = html['search']
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def search(self, query):
+        out = ''
+        for record in mealplan_db.search(query):
+            out += record
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def add(self, pdf_file=None, plan_type=None, date=None):
+        out = ''
+        if pdf_file and plan_type and date:
+            content = pdf_file.file.read()
+            mealplan_db.add(plan_type, date, content)
+        else:
+            out += html['add']
         return html['template'].format(content=out)
 
 cherrypy.config.update('server.conf')
