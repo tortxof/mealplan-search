@@ -126,12 +126,17 @@ class MealplanDatabase(object):
         conn.close()
         return record
 
+    def all(self):
+        conn = sqlite3.connect(self.dbfile)
+        records = conn.execute('select *,rowid from mealplans').fetchall()
+        conn.close()
+        return [dict(zip(self.fields, record)) for record in records]
+
     def search(self, query):
         conn = sqlite3.connect(self.dbfile)
         records = conn.execute('select *,rowid from mealplans where mealplans match ?', (query,)).fetchall()
         conn.close()
-        out = [dict(zip(self.fields, record)) for record in records]
-        return out
+        return [dict(zip(self.fields, record)) for record in records]
 
 mealplan_db = MealplanDatabase()
 
@@ -196,6 +201,13 @@ class Root(object):
 
     @cherrypy.expose
     def search(self, query):
+        out = html['search']
+        for record in mealplan_db.search(query):
+            out += html['record'].format(**record)
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def all(self):
         out = html['search']
         for record in mealplan_db.search(query):
             out += html['record'].format(**record)
