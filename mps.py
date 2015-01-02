@@ -52,7 +52,7 @@ class MealplanDatabase(object):
 class Root(object):
     @cherrypy.expose
     def index(self):
-        out = 'Hello'
+        out = html['search']
         return html['template'].format(content=out)
 
 cherrypy.config.update('server.conf')
