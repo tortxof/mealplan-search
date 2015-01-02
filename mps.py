@@ -86,11 +86,11 @@ auth_keys = AuthKeys()
 class MealplanDatabase(object):
     def __init__(self):
         self.dbfile = 'mps.db'
-        self.fields = ('plan_type', 'date', 'filename', 'content', 'rowid')
+        self.fields = ('filename', 'content', 'rowid')
 
     def new_db(self):
         conn = sqlite3.connect(self.dbfile)
-        conn.execute('create virtual table mealplans using fts4(plan_type, date, filename, content, notindexed=date)')
+        conn.execute('create virtual table mealplans using fts4(filename, content)')
         conn.execute('create table appusers (appuser text primary key not null, password text)')
         conn.commit()
         conn.close()
@@ -108,9 +108,9 @@ class MealplanDatabase(object):
         conn.close()
         return bcrypt.checkpw(password, stored_password)
 
-    def add(self, plan_type, date, filename, content):
+    def add(self, filename, content):
         conn = sqlite3.connect(self.dbfile)
-        conn.execute('insert into mealplans values(?, ?, ?, ?)', (plan_type, date, filename, content))
+        conn.execute('insert into mealplans values(?, ?)', (filename, content))
         conn.commit()
         conn.close()
 
@@ -202,14 +202,14 @@ class Root(object):
         return html['template'].format(content=out)
 
     @cherrypy.expose
-    def add(self, pdf_file=None, plan_type=None, date=None):
+    def add(self, pdf_file=None):
         out = ''
         if loggedIn():
-            if pdf_file and plan_type and date:
+            if pdf_file:
                 filename = pdf_file.filename
                 content = pdftotext(pdf_file.file.read())
                 content = ' '.join(content.split())
-                mealplan_db.add(plan_type, date, filename, content)
+                mealplan_db.add(filename, content)
                 out += html['message'].format(content='Record added.')
             else:
                 out += html['add']
