@@ -38,7 +38,7 @@ def load_templates(template_dir):
     return html
 
 def pdftotext(data):
-    return subprocess.check_output(['pdftotext', '-', '-'], input=data).decode()
+    return subprocess.check_output(['pdftotext', '-', '-'], input=data).decode(errors='ignore')
 
 html = load_templates('templates')
 
@@ -138,6 +138,16 @@ class MealplanDatabase(object):
         conn.close()
         return [dict(zip(self.fields, record)) for record in records]
 
+    def batch_import(self):
+        import_dir = 'import'
+        content = ''
+        files = os.listdir(path=import_dir)
+        for filename in files:
+            with open(import_dir + '/' + filename, mode='r+b') as f:
+                content = pdftotext(f.read())
+                content = ' '.join(content.split())
+            self.add(filename, content)
+
 mealplan_db = MealplanDatabase()
 
 class Root(object):
@@ -227,6 +237,18 @@ class Root(object):
                 out += html['add']
         else:
             out += html['message'].format(content='You must log in to add records.')
+        return html['template'].format(content=out)
+
+    @cherrypy.expose
+    def batch_import(self):
+        out = ''
+        if loggedIn():
+            if mealplan_db.batch_import():
+                out += html['message'].format(content='Batch import completed successfully.')
+            else:
+                out += html['message'].format(content='Batch import failed.')
+        else:
+            out += html['message'].format(content='You must log in to perform a batch import.')
         return html['template'].format(content=out)
 
 cherrypy.config.update('server.conf')
