@@ -147,6 +147,7 @@ class MealplanDatabase(object):
                 content = pdftotext(f.read())
                 content = ' '.join(content.split())
             self.add(filename, content)
+        return True
 
 mealplan_db = MealplanDatabase()
 
